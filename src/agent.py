@@ -69,7 +69,7 @@ def registrar_pregunta_sin_respuesta(pregunta: str) -> str:
 
 
 def _modelos():
-    return [m.strip() for m in secret("MODELS", "gemini-2.5-flash,gemini-2.5-flash-lite").split(",")]
+    return [m.strip() for m in secret("MODELS", "gemini-3.5-flash,gemini-3.5-flash-lite").split(",")]
 
 
 def responder(historial: list[dict]) -> str:
@@ -95,6 +95,7 @@ def responder(historial: list[dict]) -> str:
             if r.text:
                 return r.text.strip()
         except Exception as e:  # límite de cuota, modelo no disponible, etc.
+            print(f"Falló el modelo {modelo}: {e}")
             ultimo_error = e
     print("Error del modelo:", ultimo_error)
     return ("Tuve un problema técnico. Puede escribir de nuevo en unos segundos o llamar al "
