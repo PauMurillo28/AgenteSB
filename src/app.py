@@ -29,12 +29,12 @@ if pregunta := st.chat_input("Escriba su pregunta aquí"):
         st.write(texto)
     st.session_state.mensajes.append({"role": "assistant", "content": texto})
 
-# Vista del registro para la operación (protegida con clave; útil para mostrar la fila en el video)
 with st.sidebar:
     with st.expander("Registro (operación)"):
         clave = st.text_input("Clave", type="password")
         if clave and clave == agent.secret("ADMIN_KEY"):
-            if agent.LOG_PATH.exists():
-                st.dataframe(pd.read_csv(agent.LOG_PATH))
+            filas = agent.leer_registros()
+            if filas:
+                st.dataframe(pd.DataFrame(filas))
             else:
-                st.write("Aún no hay registros locales (si usa Google Sheets, ábrala allí).")
+                st.write("Aún no hay preguntas registradas.")
