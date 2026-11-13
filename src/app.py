@@ -1,5 +1,6 @@
 import base64
 import pathlib
+import uuid
 
 import pandas as pd
 import streamlit as st
@@ -50,6 +51,7 @@ FS_MIN, FS_MAX, FS_PASO, FS_BASE = 14, 28, 2, 18
 
 st.session_state.setdefault("tema", "Claro")
 st.session_state.setdefault("fs", FS_BASE)
+st.session_state.setdefault("sesion", uuid.uuid4().hex[:12])  # id aleatorio, sin datos personales
 
 
 def siguiente_tema():
@@ -155,19 +157,42 @@ div[data-baseweb="popover"]:has([data-testid="stTooltipContent"]), [data-testid=
 # Markdown corta el bloque <style> en la primera línea vacía: se eliminan todas
 st.markdown("\n".join(l for l in _css.splitlines() if l.strip()), unsafe_allow_html=True)
 
+_aviso = (" Para mejorar el servicio, se guardan sus mensajes sin datos personales."
+          if agent.logs_activos() else "")
 st.caption("Resuelvo dudas sobre sedes, horarios, requisitos y costos. "
-           "No agendo citas ni doy consejo médico. Por favor no escriba datos personales.")
+           "No agendo citas ni doy consejo médico. Por favor no escriba datos personales." + _aviso)
 
 # ---------- Vista de registro para la operación: solo con ?admin en la dirección y clave ----------
 if "admin" in st.query_params:
-    with st.expander("Registro (operación)"):
+    with st.expander("Registro y analítica (operación)"):
         clave = st.text_input("Clave", type="password")
         if clave and clave == agent.secret("ADMIN_KEY"):
-            filas = agent.leer_registros() if hasattr(agent, "leer_registros") else []
-            if filas:
-                st.dataframe(pd.DataFrame(filas))
-            else:
-                st.write("Aún no hay preguntas registradas.")
+            tab1, tab2 = st.tabs(["Preguntas sin respuesta", "Conversaciones y métricas"])
+            with tab1:
+                filas = agent.leer_registros()
+                if filas:
+                    st.dataframe(pd.DataFrame(filas))
+                else:
+                    st.write("Aún no hay preguntas registradas.")
+            with tab2:
+                filas = agent.leer_interacciones(500)
+                if not filas:
+                    st.write("Aún no hay conversaciones guardadas.")
+                else:
+                    df = pd.DataFrame(filas)
+                    por_sesion = df.groupby("sesion")["turno"].max()
+                    m1, m2 = st.columns(2)
+                    m1.metric("Conversaciones", int(por_sesion.size))
+                    m2.metric("Mensajes del paciente por conversación", f"{por_sesion.mean():.1f}")
+                    m3, m4 = st.columns(2)
+                    m3.metric("Turnos con pregunta sin respuesta", f"{100 * df['registro_sin_respuesta'].mean():.0f}%")
+                    m4.metric("Tiempo medio de respuesta (s)", f"{df['latencia_ms'].mean() / 1000:.1f}")
+                    st.caption(f"Calculado sobre los últimos {len(df)} turnos guardados.")
+                    cols = [c for c in ["fecha", "sesion", "turno", "pregunta", "respuesta",
+                                        "registro_sin_respuesta", "latencia_ms", "lineas"] if c in df.columns]
+                    st.dataframe(df[cols])
+                    st.download_button("Descargar CSV", df.to_csv(index=False).encode("utf-8-sig"),
+                                       "conversaciones.csv", "text/csv")
 
 # ---------- Chat ----------
 SALUDO = ("Hola, soy el asistente de Red Salud Andina. Puedo ayudarle con sedes, horarios, "
@@ -187,6 +212,6 @@ if pregunta := st.chat_input("Escriba su pregunta aquí"):
         st.write(pregunta)
     with st.chat_message("assistant", avatar=AVATAR):
         with st.spinner("Un momento..."):
-            texto = agent.responder(st.session_state.mensajes)
+            texto = agent.responder(st.session_state.mensajes, sesion=st.session_state.sesion)
         st.write(texto)
     st.session_state.mensajes.append({"role": "assistant", "content": texto})

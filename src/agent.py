@@ -21,6 +21,7 @@ _db_obj = None
 _client_obj = None
 _kb_lock = threading.Lock()
 _db_lock = threading.Lock()
+_local = threading.local()  # banderas del turno actual, por sesión
 
 
 def secret(name, default=None):
@@ -108,10 +109,14 @@ def construir_system() -> str:
 
 
 # ---------------- Registro de preguntas sin respuesta ----------------
-def limpiar_pii(texto: str) -> str:
+def limpiar_pii(texto: str, max_len: int = 300) -> str:
+    """Red de seguridad (no infalible): borra correos, números largos (documentos, teléfonos)
+    y nombres introducidos con 'me llamo / mi nombre es / soy'."""
     texto = re.sub(r"[\w.\-+]+@[\w\-]+\.[\w.\-]+", "[dato omitido]", texto)
     texto = re.sub(r"\+?\d[\d\s\-().]{5,}\d", "[dato omitido]", texto)
-    return texto.strip()[:300]
+    texto = re.sub(r"(?i:me llamo|mi nombre es|soy)\s+[A-ZÁÉÍÓÚÑ][\wáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][\wáéíóúñ]+){0,2}",
+                   "[dato omitido]", texto)
+    return texto.strip()[:max_len]
 
 
 def _guardar(pregunta: str):
@@ -147,6 +152,37 @@ def leer_registros(n: int = 50) -> list:
         return []
 
 
+# ---------- Registro de conversaciones (pregunta/respuesta por turno) ----------
+def logs_activos() -> bool:
+    return str(secret("LOG_CONVERSACIONES", "1")).lower() not in ("0", "false", "no")
+
+
+def _guardar_interaccion(doc: dict):
+    try:
+        from firebase_admin import firestore
+        doc["fecha"] = firestore.SERVER_TIMESTAMP
+        _db().collection("interacciones").add(doc)
+    except Exception as e:
+        print(f"[interacciones] No se pudo guardar el turno: {e!r}")
+
+
+def leer_interacciones(n: int = 500) -> list:
+    """Últimos turnos guardados (más recientes primero), para el panel de analítica."""
+    try:
+        from firebase_admin import firestore
+        docs = (_db().collection("interacciones")
+                .order_by("fecha", direction=firestore.Query.DESCENDING).limit(n).stream())
+        filas = []
+        for d in docs:
+            x = d.to_dict()
+            x["fecha"] = str(x.get("fecha"))[:19]
+            filas.append(x)
+        return filas
+    except Exception as e:
+        print(f"[interacciones] No pude leer Firestore: {e!r}")
+        return []
+
+
 def registrar_pregunta_sin_respuesta(pregunta: str) -> str:
     """Registra una duda informativa sobre Red Salud Andina cuya respuesta no se tiene
     (ej.: valor de un examen). NO usar para agendar o consultar citas, resultados, consejo
@@ -154,6 +190,7 @@ def registrar_pregunta_sin_respuesta(pregunta: str) -> str:
     nombres, documentos, teléfonos ni otros datos personales."""
     global CONTADOR_REGISTROS
     CONTADOR_REGISTROS += 1
+    _local.registro = True
     threading.Thread(target=_guardar, args=(limpiar_pii(pregunta),)).start()  # no hace esperar al usuario
     return "Listo. No menciones este registro al usuario; solo indícale el canal de contacto adecuado."
 
@@ -170,7 +207,9 @@ def _cliente():
     return _client_obj
 
 
-def responder(historial: list) -> str:
+def responder(historial: list, sesion: str = None) -> str:
+    """historial: [{'role': 'user'|'assistant', 'content': str}, ...]. Si se pasa `sesion`
+    (un id aleatorio, sin datos personales) y el registro está activo, guarda el turno."""
     client = _cliente()
     contenido = [
         types.Content(role="user" if m["role"] == "user" else "model",
@@ -183,20 +222,41 @@ def responder(historial: list) -> str:
         temperature=0.2,
         max_output_tokens=800,
     )
-    ultimo_error = None
+    _local.registro = False
+    t_inicio = time.time()
+    texto, modelo_usado, ultimo_error = None, None, None
     for modelo in _modelos():
         try:
             t0 = time.time()
             r = client.models.generate_content(model=modelo, contents=contenido, config=config)
             print(f"[tiempo] modelo {modelo}: {time.time() - t0:.2f}s")
             if r.text:
-                return r.text.strip()
+                texto, modelo_usado = r.text.strip(), modelo
+                break
         except Exception as e:
             print(f"Falló el modelo {modelo}: {e}")
             ultimo_error = e
-    print("Error del modelo:", ultimo_error)
-    return ("Tuve un problema técnico. Puede escribir de nuevo en unos segundos o llamar al "
-            "(601) 555 0100 (L–V 7:00–19:00, sáb 8:00–14:00).")
+    fallo = texto is None
+    if fallo:
+        print("Error del modelo:", ultimo_error)
+        texto = ("Tuve un problema técnico. Puede escribir de nuevo en unos segundos o llamar al "
+                 "(601) 555 0100 (L–V 7:00–19:00, sáb 8:00–14:00).")
+
+    if sesion and logs_activos():
+        usuario = [m for m in historial if m["role"] == "user"]
+        doc = {
+            "sesion": sesion,
+            "turno": len(usuario),
+            "pregunta": limpiar_pii(usuario[-1]["content"], 500) if usuario else "",
+            "respuesta": limpiar_pii(texto, 1000),
+            "lineas": len([l for l in texto.splitlines() if l.strip()]),
+            "modelo": modelo_usado or "ninguno",
+            "latencia_ms": int((time.time() - t_inicio) * 1000),
+            "registro_sin_respuesta": bool(getattr(_local, "registro", False)),
+            "error_modelo": fallo,
+        }
+        threading.Thread(target=_guardar_interaccion, args=(doc,)).start()  # no hace esperar al usuario
+    return texto
 
 
 precalentar()
