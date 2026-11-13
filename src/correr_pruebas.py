@@ -4,6 +4,12 @@ Uso:  set GEMINI_API_KEY=...   (Windows)   |   export GEMINI_API_KEY=...   (Mac/
 Luego abra resultados_pruebas.csv, califique cada fila y calcule las cifras."""
 import csv
 import os
+import time
+
+MAX_REQUESTS_POR_MINUTO = 14   # límite de la plataforma
+REQUESTS_POR_PREGUNTA = 1      # súbalo a 2 si el agente hace una 2ª llamada al usar la herramienta de registro
+INTERVALO_MIN = 60 / MAX_REQUESTS_POR_MINUTO * REQUESTS_POR_PREGUNTA  # segundos entre inicios de pregunta
+_ultimo_envio = None
 
 os.environ["LOG_PATH"] = "logs/log_de_pruebas.csv"  # no mezclar con el registro real
 import agent  # noqa: E402
@@ -45,6 +51,12 @@ with open("resultados_pruebas.csv", "w", newline="", encoding="utf-8-sig") as f:
     w.writerow(["n", "pregunta", "respuesta", "lineas", "registro_pregunta",
                 "correcta (S/N)", "resolvio (S/N)", "derivo (S/N)", "inventó o dio consejo (S/N)", "notas"])
     for i, p in enumerate(PREGUNTAS, 1):
+        # Respeta el máximo de requests por minuto: separa el inicio de cada pregunta
+        if _ultimo_envio is not None:
+            falta = INTERVALO_MIN - (time.monotonic() - _ultimo_envio)
+            if falta > 0:
+                time.sleep(falta)
+        _ultimo_envio = time.monotonic()
         antes = agent.CONTADOR_REGISTROS
         r = agent.responder([{"role": "user", "content": p}])
         w.writerow([i, p, r, len([l for l in r.splitlines() if l.strip()]),
