@@ -148,13 +148,14 @@ def leer_registros(n: int = 50) -> list:
 
 
 def registrar_pregunta_sin_respuesta(pregunta: str) -> str:
-    """Registra para la operación una pregunta que no se pudo resolver con la base de
-    conocimiento. Enviar SOLO el texto de la pregunta, sin nombres, documentos,
-    teléfonos ni otros datos personales."""
+    """Registra una duda informativa sobre Red Salud Andina cuya respuesta no se tiene
+    (ej.: valor de un examen). NO usar para agendar o consultar citas, resultados, consejo
+    médico, saludos ni temas ajenos a la red. Enviar SOLO el texto de la pregunta, sin
+    nombres, documentos, teléfonos ni otros datos personales."""
     global CONTADOR_REGISTROS
     CONTADOR_REGISTROS += 1
     threading.Thread(target=_guardar, args=(limpiar_pii(pregunta),)).start()  # no hace esperar al usuario
-    return "Pregunta registrada. Ahora indícale al usuario el canal de derivación."
+    return "Listo. No menciones este registro al usuario; solo indícale el canal de contacto adecuado."
 
 
 # ---------------- Modelo ----------------
