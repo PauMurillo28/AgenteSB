@@ -143,8 +143,9 @@ _css = f"""
 [data-testid="stChatInput"] textarea::placeholder {{ color: {t['fg']} !important; opacity: .6; -webkit-text-fill-color: {t['fg']}; }}
 [data-testid="stChatInput"] button {{ background: transparent !important; }}
 [data-testid="stChatInput"] button svg {{ fill: {t['fg']} !important; color: {t['fg']} !important; }}
-div[data-baseweb="input"], div[data-baseweb="input"] > div, div[data-baseweb="base-input"] {{ background: {t['campo']} !important; }}
-div[data-baseweb="input"] input {{ background: {t['campo']} !important; color: {t['fg']} !important; -webkit-text-fill-color: {t['fg']} !important; }}
+div[data-baseweb="input"], div[data-baseweb="input"] > div, div[data-baseweb="base-input"], [data-testid="stTextInputRootElement"] {{ background: {t['campo']} !important; border-color: {t['borde']} !important; }}
+div[data-baseweb="input"] input, [data-testid="stTextInputRootElement"] input {{ background: {t['campo']} !important; color: {t['fg']} !important; -webkit-text-fill-color: {t['fg']} !important; }}
+[data-testid="stExpander"] {{ background: {t['panel']} !important; border-color: {t['borde']} !important; }}
 [data-testid="stExpander"] details {{ background: {t['panel']}; border-color: {t['borde']}; }}
 [data-testid="stExpander"] summary span, [data-testid="stExpander"] summary svg {{ color: {t['fg']} !important; fill: {t['fg']} !important; }}
 
@@ -170,10 +171,18 @@ if "admin" in st.query_params:
             tab1, tab2 = st.tabs(["Preguntas sin respuesta", "Conversaciones y métricas"])
             with tab1:
                 filas = agent.leer_registros()
-                if filas:
-                    st.dataframe(pd.DataFrame(filas))
-                else:
+                if not filas:
                     st.write("Aún no hay preguntas registradas.")
+                else:
+                    df_reg = pd.DataFrame(filas)
+                    st.dataframe(df_reg)
+                    st.download_button(
+                        "Descargar CSV", 
+                        df_reg.to_csv(index=False).encode("utf-8-sig"),
+                        "preguntas_sin_respuesta.csv", 
+                        "text/csv",
+                        key="descargar_csv_preguntas"
+                    )
             with tab2:
                 filas = agent.leer_interacciones(500)
                 if not filas:
