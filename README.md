@@ -1,3 +1,7 @@
+## Enlaces:
+Agente: https://red-saludandina-bot.streamlit.app
+Versión Admin: https://red-saludandina-bot.streamlit.app/?admin=1 (ingresar la contraseña "admin" en la pestaña Registro y Analítica)
+
 # Asistente de preguntas básicas — Red Salud Andina (caso ficticio)
 
 Agente conversacional que responde dudas básicas de pacientes y familiares (sedes, horarios, requisitos,
@@ -146,4 +150,14 @@ nombres ni documentos. El chat muestra un aviso a la persona cuando esto está a
 
 ## Uso de herramientas e IA
 
-Ver la declaración incluida en el correo de entrega. `[Resumen en una línea si desea repetirlo aquí.]`
+Herramientas usadas (incluida la IA) y para qué: Deep Search con Gemini 3.5 Flash Lite: Para la creación del plan de acción, investigación de plataformas y herramientas y redacción del guión.
+Gemini 3.5 Flash Lite: Motor del agente.
+Claude Sonnet 5.5: Diseño base del código y ealuación de resultados.
+Firebase: Base de datos.
+Streamlit: Despliegue.
+Google AI Studio: Orquestrador motor del agente.
+Qué hice yo directamente: Pruebas y adaptaciones del agente.
+Qué verifiqué y cómo: Se verifica si la respuesta es correcta y sin alucinaciones, si el agente resolvió la solicitud y entendió la necesidad a fondo y si dió consejos o pidió datos personales al realizar pruebas automáticas sobre 25 preguntas basadas en el anexo y evaluar sus respuestas usando un modelo de IA diferente al usado para generar las respuestas. Estas pruebas están registradas dentro de la carpeta Resultados.
+Latencia de respuesta, tokens usados, número de líneas en la respuesta, número de mensajes por conversación se obtienen usando analítica sobre los logs de las preguntas.
+Qué no alcancé a hacer: Métrica de cuántas pregunntas toma resolver un problema. Frente de pareto con distintos modelos. Usar los datos de firebase para obtener tendencias en las preguntas. Mejorar accesibilidad del front en la versión admin.
+Un fallo que encontré en mis pruebas y qué hice (puede decir que no tuvo): Al hacer las pruebas automáticas se superaba límite de peticiones por minutos disponibles en la versión gratuita de mi modelo en Google AI Studio y las respuestas fallaban. Implementé un limite de 14 preguntas por minuto para mantenerme en el rango. Además hice múltiples versiones del prompt del agente hasta obtener los resultados actuales, mejorando cada vez su resultado en los criterios propuestos.
